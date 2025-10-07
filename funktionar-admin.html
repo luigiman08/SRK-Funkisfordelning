@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Funktionärsadministration</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;margin:0;padding:0;background:#f5f7fb;color:#111}
+    .container{max-width:1000px;margin:24px auto;padding:20px;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(17,24,39,0.08)}
+    h1{margin-top:0}
+    label{display:block;margin-top:8px;font-weight:600}
+    input,select,textarea{width:100%;padding:8px;border-radius:6px;border:1px solid #d1d5db}
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    button{padding:8px 12px;border-radius:8px;border:0;background:#2563eb;color:white;cursor:pointer}
+    button.secondary{background:#6b7280}
+    .panel{border:1px dashed #e5e7eb;padding:12px;border-radius:8px;margin-top:12px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .notice{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#22c55e;color:white;padding:10px 20px;border-radius:8px;font-weight:600;display:none;z-index:1000;box-shadow:0 4px 10px rgba(0,0,0,0.2)}
+  </style>
+</head>
+<body>
+  <div id="notice" class="notice">Godkänt!</div>
+  <div class="container">
+    <h1>Administration av tävlingar & funktionärspass</h1>
+
+    <div id="authPanel" class="panel">
+      <h3>Admin-inloggning</h3>
+      <div class="row">
+        <div class="col">
+          <label>Lösenord</label>
+          <input id="adminPassword" type="password" placeholder="Ange admin-lösenord (standard: admin)">
+        </div>
+        <div style="width:160px;display:flex;align-items:flex-end">
+          <button id="loginBtn">Logga in</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="adminArea" style="display:none">
+      <div class="panel">
+        <h3>Lägg till tävling</h3>
+        <label>Namn på tävling</label>
+        <input id="tavlingNamn" placeholder="Ex: Lokalcupen 2026">
+        <div class="controls" style="margin-top:8px">
+          <button id="createTavling">Skapa tävling</button>
+          <button class="secondary" id="logoutBtn">Logga ut</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Lägg till funktionärspass</h3>
+        <label>Välj tävling</label>
+        <select id="selectTavling"></select>
+        <div class="row">
+          <div class="col">
+            <label>Datum (eller första datumet)</label>
+            <input id="passDatum" type="date">
+          </div>
+          <div class="col">
+            <label>Ytterligare datum (komma-separerade)</label>
+            <input id="extraDatum" placeholder="2025-10-11, 2025-10-12">
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <label>Tid</label>
+            <input id="passTid" placeholder="09:00-12:00">
+          </div>
+          <div class="col">
+            <label>Avdelning / Roll</label>
+            <input id="passAvdelning" placeholder="Ex: Parkering, Sekretariat">
+          </div>
+        </div>
+        <label>Kontaktperson</label>
+        <input id="passKontakt" placeholder="Namn och kontaktuppgifter">
+        <label>Antal behövda</label>
+        <input id="passAntal" type="number" min="1" value="1">
+        <div class="controls" style="margin-top:8px">
+          <button id="createPass">Lägg till pass</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Tävlingar & pass</h3>
+        <div id="tavlingList"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Medlemsvy — önska pass</h3>
+      <label>Namn</label>
+      <input id="memberName" placeholder="Ditt namn">
+      <label>E-post</label>
+      <input id="memberEmail" placeholder="Din e-postadress (mock)">
+      <div class="controls" style="margin-top:8px">
+        <button id="saveRequests">Spara önskemål</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY='volontar_db_v3'; const DEFAULT_ADMIN_PW='admin';
+    function showNotice(msg='Godkänt!'){const n=document.getElementById('notice');n.textContent=msg;n.style.display='block';setTimeout(()=>n.style.display='none',2000);}
+    function loadDB(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||{tavlingar:[],pass:[],requests:[]}}catch{return{tavlingar:[],pass:[],requests:[]}}}
+    function saveDB(db){localStorage.setItem(STORAGE_KEY,JSON.stringify(db));}
+    let db=loadDB();
+
+    document.getElementById('loginBtn').onclick=()=>{if(adminPassword.value===DEFAULT_ADMIN_PW){authPanel.style.display='none';adminArea.style.display='block';renderAdmin();}else alert('Fel lösenord');};
+    document.getElementById('logoutBtn').onclick=()=>{authPanel.style.display='block';adminArea.style.display='none';};
+
+    document.getElementById('createTavling').onclick=()=>{const n=tavlingNamn.value.trim();if(!n)return alert('Ange namn');db.tavlingar.push({id:'t'+Date.now(),namn:n});saveDB(db);renderAdmin();showNotice();};
+
+    document.getElementById('createPass').onclick=()=>{
+      const tid=passTid.value,avd=passAvdelning.value,kont=passKontakt.value,antal=parseInt(passAntal.value)||1;
+      const base=passDatum.value;const extras=extraDatum.value.split(',').map(x=>x.trim()).filter(x=>x);
+      const dates=[base,...extras].filter(x=>x);
+      if(!selectTavling.value)return alert('Välj tävling');
+      if(!dates.length)return alert('Ange minst ett datum');
+      dates.forEach(d=>db.pass.push({id:'p'+Date.now()+Math.random(),tavlingId:selectTavling.value,datum:d,tid,avd,kontakt:kont,antal}));
+      saveDB(db);renderAdmin();showNotice('Pass tillagda!');
+    };
+
+    document.getElementById('saveRequests').onclick=()=>{const n=memberName.value.trim();const e=memberEmail.value.trim();if(!n||!e)return alert('Fyll i namn och e-post');showNotice('Önskemål sparade!');};
+
+    function renderAdmin(){const sel=document.getElementById('selectTavling');sel.innerHTML='';db.tavlingar.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.namn;sel.appendChild(o);});const list=document.getElementById('tavlingList');list.innerHTML=db.tavlingar.map(t=>`<h4>${t.namn}</h4>`).join('');}
+  </script>
+</body>
+</html>
